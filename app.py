@@ -155,14 +155,18 @@ if query or selected_ingredients:
             except:
                 st.markdown("**🥗 Nutrition:** Not available")
 
-            # Steps
-            if row['steps_list']:
-                steps = "<br>".join(
-                    [f"{i+1}. {step}" for i, step in enumerate(row['steps_list'])]
-                )
-                st.markdown(f"**👨‍🍳 Steps:**<br>{steps}", unsafe_allow_html=True)
-            else:
-                st.markdown("**👨‍🍳 Steps:** No steps available.")
+# Steps
+try:
+    steps_list = ast.literal_eval(row['steps'])
+    if isinstance(steps_list, list) and len(steps_list) > 0:
+        steps = "<br>".join(
+            [f"{i+1}. {step}" for i, step in enumerate(steps_list)]
+        )
+        st.markdown(f"**👨‍🍳 Steps:**<br>{steps}", unsafe_allow_html=True)
+    else:
+        st.markdown("**👨‍🍳 Steps:** No steps available.")
+except:
+    st.markdown("**👨‍🍳 Steps:** No steps available.")
 
             st.markdown('</div>', unsafe_allow_html=True)
     else:
