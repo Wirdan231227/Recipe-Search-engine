@@ -30,7 +30,7 @@ def is_vegetarian(tags_text):
 
 
 # -----------------------------
-# Data Loader (SAFE FOR CACHE)
+# Data Loader (NO LIST COLUMNS)
 # -----------------------------
 
 @st.cache_data
@@ -38,18 +38,14 @@ def load_data():
     df = pd.read_csv("RAW_recipes.csv")
 
     required_columns = [
-        'name', 'ingredients', 'tags',
-        'steps', 'minutes', 'nutrition', 'description'
+        'name', 'ingredients', 'steps',
+        'tags', 'minutes', 'nutrition', 'description'
     ]
     df = df.dropna(subset=required_columns)
 
-    # Create TF-IDF compatible ingredient text
     df['ingredients_clean'] = df['ingredients'].apply(
         lambda x: clean_text(parse_ingredients(x))
     )
-
-    # ❗ DO NOT create list columns here
-    # Keep steps, ingredients, nutrition AS STRINGS
 
     df['minutes'] = df['minutes'].astype(int)
 
@@ -57,7 +53,7 @@ def load_data():
 
 
 # -----------------------------
-# TF-IDF Model Builder
+# TF-IDF Model
 # -----------------------------
 
 @st.cache_resource
@@ -83,15 +79,10 @@ def search_recipes(
     if not query.strip():
         return pd.DataFrame()
 
-    cleaned_query = clean_text(query.lower())
-    query_vector = vectorizer.transform([cleaned_query])
+    query_vector = vectorizer.transform([clean_text(query.lower())])
+    similarity_scores = cosine_similarity(query_vector, tfidf_matrix).flatten()
 
-    similarity_scores = cosine_similarity(
-        query_vector, tfidf_matrix
-    ).flatten()
-
-    sorted_indices = similarity_scores.argsort()[::-1]
-    results = dataframe.iloc[sorted_indices]
+    results = dataframe.iloc[similarity_scores.argsort()[::-1]]
 
     if vegetarian_only:
         results = results[results['tags'].apply(is_vegetarian)]
