@@ -12,15 +12,13 @@ def parse_ingredients(ingredients_string):
     try:
         ingredients_list = ast.literal_eval(ingredients_string)
         return " ".join(
-            ingredient.lower()
-            for ingredient in ingredients_list
-            if isinstance(ingredient, str)
+            ing.lower() for ing in ingredients_list if isinstance(ing, str)
         )
     except:
         return ""
 
 def clean_text(text):
-    return "".join(char for char in text if char.isalpha() or char == " ")
+    return "".join(c for c in text if c.isalpha() or c == " ")
 
 def is_vegetarian(tags_text):
     try:
@@ -30,18 +28,18 @@ def is_vegetarian(tags_text):
 
 
 # -----------------------------
-# Data Loader (NO LIST COLUMNS)
+# Load Data (SAFE)
 # -----------------------------
 
 @st.cache_data
 def load_data():
     df = pd.read_csv("RAW_recipes.csv")
 
-    required_columns = [
+    required = [
         'name', 'ingredients', 'steps',
         'tags', 'minutes', 'nutrition', 'description'
     ]
-    df = df.dropna(subset=required_columns)
+    df = df.dropna(subset=required)
 
     df['ingredients_clean'] = df['ingredients'].apply(
         lambda x: clean_text(parse_ingredients(x))
@@ -53,40 +51,63 @@ def load_data():
 
 
 # -----------------------------
-# TF-IDF Model
+# TF-IDF
 # -----------------------------
 
 @st.cache_resource
-def build_tfidf_model(dataframe):
+def build_tfidf_model(df):
     vectorizer = TfidfVectorizer(stop_words="english")
-    tfidf_matrix = vectorizer.fit_transform(dataframe['ingredients_clean'])
+    tfidf_matrix = vectorizer.fit_transform(df['ingredients_clean'])
     return vectorizer, tfidf_matrix
 
 
 # -----------------------------
-# Search Function
+# Search (AND-BOOST + SCORE)
 # -----------------------------
 
 def search_recipes(
     query,
     vectorizer,
     tfidf_matrix,
-    dataframe,
-    top_n=10,
-    vegetarian_only=False,
-    max_cook_time=1000
+    df,
+    top_n,
+    vegetarian_only,
+    max_cook_time,
+    max_calories,
+    min_protein
 ):
     if not query.strip():
         return pd.DataFrame()
 
-    query_vector = vectorizer.transform([clean_text(query.lower())])
-    similarity_scores = cosine_similarity(query_vector, tfidf_matrix).flatten()
+    query_terms = clean_text(query.lower()).split()
+    query_vector = vectorizer.transform([" ".join(query_terms)])
+    scores = cosine_similarity(query_vector, tfidf_matrix).flatten()
 
-    results = dataframe.iloc[similarity_scores.argsort()[::-1]]
+    results = df.copy()
+    results["similarity"] = scores
+
+    # AND-based ingredient boost
+    def and_match_boost(text):
+        return sum(1 for term in query_terms if term in text)
+
+    results["and_score"] = results["ingredients_clean"].apply(and_match_boost)
+    results["final_score"] = results["similarity"] + (results["and_score"] * 0.15)
+
+    results = results.sort_values("final_score", ascending=False)
 
     if vegetarian_only:
-        results = results[results['tags'].apply(is_vegetarian)]
+        results = results[results["tags"].apply(is_vegetarian)]
 
-    results = results[results['minutes'] <= max_cook_time]
+    results = results[results["minutes"] <= max_cook_time]
+
+    # Nutrition filtering
+    def nutrition_ok(nut):
+        try:
+            n = ast.literal_eval(nut)
+            return n[0] <= max_calories and n[4] >= min_protein
+        except:
+            return False
+
+    results = results[results["nutrition"].apply(nutrition_ok)]
 
     return results.head(top_n)
