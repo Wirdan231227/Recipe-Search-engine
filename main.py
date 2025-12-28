@@ -9,72 +9,48 @@ from sklearn.metrics.pairwise import cosine_similarity
 # -----------------------------
 
 def parse_ingredients(ingredients_string):
-    """Safely convert stringified list of ingredients into lowercase text"""
     try:
         ingredients_list = ast.literal_eval(ingredients_string)
-        if not isinstance(ingredients_list, list):
-            return ""
         return " ".join(
             ingredient.lower()
             for ingredient in ingredients_list
             if isinstance(ingredient, str)
         )
-    except Exception:
+    except:
         return ""
 
-
 def clean_text(text):
-    """Remove numbers and special characters"""
-    return "".join(
-        char for char in text if char.isalpha() or char == " "
-    )
-
-
-def parse_steps(steps_string):
-    """Safely parse cooking steps"""
-    try:
-        steps_list = ast.literal_eval(steps_string)
-        return steps_list if isinstance(steps_list, list) else []
-    except Exception:
-        return []
-
+    return "".join(char for char in text if char.isalpha() or char == " ")
 
 def is_vegetarian(tags_text):
-    """Check if recipe is vegetarian"""
     try:
         return "vegetarian" in tags_text.lower()
-    except Exception:
+    except:
         return False
 
 
 # -----------------------------
-# Data Loader
+# Data Loader (SAFE FOR CACHE)
 # -----------------------------
 
 @st.cache_data
 def load_data():
-    try:
-        df = pd.read_csv("RAW_recipes.csv")
-    except Exception as e:
-        st.error(f"Failed to read CSV file: {e}")
-        return pd.DataFrame()
+    df = pd.read_csv("RAW_recipes.csv")
 
-    required_columns = ['name', 'ingredients', 'tags', 'steps', 'minutes']
+    required_columns = [
+        'name', 'ingredients', 'tags',
+        'steps', 'minutes', 'nutrition', 'description'
+    ]
     df = df.dropna(subset=required_columns)
 
-    if df.empty:
-        st.error("Dataset is empty after cleaning.")
-        return pd.DataFrame()
-
-    # Clean ingredients
+    # Create TF-IDF compatible ingredient text
     df['ingredients_clean'] = df['ingredients'].apply(
         lambda x: clean_text(parse_ingredients(x))
     )
 
-    # Parse steps
-    df['steps_list'] = df['steps'].apply(parse_steps)
+    # ❗ DO NOT create list columns here
+    # Keep steps, ingredients, nutrition AS STRINGS
 
-    # Ensure minutes is integer
     df['minutes'] = df['minutes'].astype(int)
 
     return df
@@ -86,18 +62,8 @@ def load_data():
 
 @st.cache_resource
 def build_tfidf_model(dataframe):
-    if dataframe.empty:
-        raise ValueError("DataFrame is empty. Cannot build TF-IDF model.")
-
-    if 'ingredients_clean' not in dataframe.columns:
-        raise ValueError(
-            "Column 'ingredients_clean' not found. "
-            f"Available columns: {list(dataframe.columns)}"
-        )
-
-    vectorizer = TfidfVectorizer(stop_words='english')
+    vectorizer = TfidfVectorizer(stop_words="english")
     tfidf_matrix = vectorizer.fit_transform(dataframe['ingredients_clean'])
-
     return vectorizer, tfidf_matrix
 
 
@@ -120,16 +86,16 @@ def search_recipes(
     cleaned_query = clean_text(query.lower())
     query_vector = vectorizer.transform([cleaned_query])
 
-    similarity_scores = cosine_similarity(query_vector, tfidf_matrix).flatten()
-    sorted_indices = similarity_scores.argsort()[::-1]
+    similarity_scores = cosine_similarity(
+        query_vector, tfidf_matrix
+    ).flatten()
 
+    sorted_indices = similarity_scores.argsort()[::-1]
     results = dataframe.iloc[sorted_indices]
 
-    # Vegetarian filter
     if vegetarian_only:
         results = results[results['tags'].apply(is_vegetarian)]
 
-    # Cooking time filter
     results = results[results['minutes'] <= max_cook_time]
 
     return results.head(top_n)
