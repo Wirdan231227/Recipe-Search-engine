@@ -7,50 +7,48 @@ from main import load_data, build_tfidf_model, search_recipes
 # -----------------------------
 # Background Image
 # -----------------------------
-def set_background(image_file):
-    with open(image_file, "rb") as image:
-        encoded = base64.b64encode(image.read()).decode()
 
-    css = f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/jpg;base64,{encoded}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-    }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+def set_background(image_file):
+    with open(image_file, "rb") as img:
+        encoded = base64.b64encode(img.read()).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/jpg;base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 set_background("image.jpg")
 
 # -----------------------------
 # Custom CSS
 # -----------------------------
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Orbitron', sans-serif;
-    background-color: #0f1117;
-    color: #ffffff;
+    color: white;
 }
 
 .title {
     font-size: 48px;
     text-align: center;
-    margin-top: 20px;
     color: #00f2ff;
-    text-shadow: 0 0 20px #00f2ff;
 }
 
 .subtitle {
-    font-size: 20px;
     text-align: center;
-    margin-bottom: 30px;
     color: #aaaaaa;
+    margin-bottom: 30px;
 }
 
 .box {
@@ -59,11 +57,6 @@ html, body, [class*="css"] {
     padding: 20px;
     margin-bottom: 25px;
     background: rgba(0, 242, 255, 0.05);
-    box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
-}
-
-.sidebar .css-1d391kg {
-    background-color: #1f2633;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -71,45 +64,35 @@ html, body, [class*="css"] {
 # -----------------------------
 # Title
 # -----------------------------
+
 st.markdown('<div class="title">RECIPE SEARCH ENGINE</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Enter ingredients you want to search for</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# Load Data & Model
+# Load Data
 # -----------------------------
+
 df = load_data()
 vectorizer, tfidf_matrix = build_tfidf_model(df)
 
 # -----------------------------
-# Sidebar Filters
+# Sidebar
 # -----------------------------
+
 with st.sidebar:
-    st.markdown("### 🔧 Search Filters")
-
     vegetarian_only = st.checkbox("🥗 Vegetarian only")
-    max_cook_time = st.slider("⏱️ Max cooking time (minutes)", 5, 300, 60)
-
-    common_ingredients = [
-        'salt', 'butter', 'sugar', 'onion', 'water', 'eggs', 'olive oil',
-        'milk', 'garlic', 'flour', 'pepper', 'vanilla', 'cinnamon'
-    ]
-    selected_ingredients = st.multiselect("🧂 Common Ingredients", common_ingredients)
-
-    top_n = st.slider("📋 Number of recipes to show", 1, 20, 5)
+    max_cook_time = st.slider("⏱️ Max cooking time", 5, 300, 60)
+    top_n = st.slider("📋 Recipes to show", 1, 20, 5)
 
 # -----------------------------
-# Search Input
+# Search
 # -----------------------------
+
 query = st.text_input("🔍 Enter ingredients:")
 
-# -----------------------------
-# Results
-# -----------------------------
-if query or selected_ingredients:
-    final_query = query + " " + " ".join(selected_ingredients)
-
+if query:
     results = search_recipes(
-        final_query,
+        query,
         vectorizer,
         tfidf_matrix,
         df,
@@ -122,7 +105,7 @@ if query or selected_ingredients:
         for _, row in results.iterrows():
             st.markdown('<div class="box">', unsafe_allow_html=True)
 
-            # Recipe Name
+            # Name
             st.subheader(row['name'])
 
             # Description
@@ -142,34 +125,36 @@ if query or selected_ingredients:
             # Nutrition
             try:
                 nutrition = ast.literal_eval(row['nutrition'])
-                st.markdown("**🥗 Nutrition (per serving):**")
-                st.markdown(f"""
-                - 🔥 **Calories:** {nutrition[0]} kcal  
-                - 🧈 **Total Fat:** {nutrition[1]} g  
-                - 🍬 **Sugar:** {nutrition[2]} g  
-                - 🧂 **Sodium:** {nutrition[3]} mg  
-                - 💪 **Protein:** {nutrition[4]} g  
-                - 🧀 **Saturated Fat:** {nutrition[5]} g  
-                - 🍞 **Carbohydrates:** {nutrition[6]} g  
-                """)
+                st.markdown("""
+**🥗 Nutrition (per serving):**
+- 🔥 Calories: {} kcal
+- 🧈 Total Fat: {} g
+- 🍬 Sugar: {} g
+- 🧂 Sodium: {} mg
+- 💪 Protein: {} g
+- 🧀 Saturated Fat: {} g
+- 🍞 Carbohydrates: {} g
+                """.format(*nutrition))
             except:
                 st.markdown("**🥗 Nutrition:** Not available")
 
-# Steps
-try:
-    steps_list = ast.literal_eval(row['steps'])
-    if isinstance(steps_list, list) and len(steps_list) > 0:
-        steps = "<br>".join(
-            [f"{i+1}. {step}" for i, step in enumerate(steps_list)]
-        )
-        st.markdown(f"**👨‍🍳 Steps:**<br>{steps}", unsafe_allow_html=True)
-    else:
-        st.markdown("**👨‍🍳 Steps:** No steps available.")
-except:
-    st.markdown("**👨‍🍳 Steps:** No steps available.")
+            # Steps (✅ FIXED)
+            try:
+                steps_list = ast.literal_eval(row['steps'])
+                if isinstance(steps_list, list) and steps_list:
+                    steps = "<br>".join(
+                        [f"{i+1}. {step}" for i, step in enumerate(steps_list)]
+                    )
+                    st.markdown(f"**👨‍🍳 Steps:**<br>{steps}", unsafe_allow_html=True)
+                else:
+                    st.markdown("**👨‍🍳 Steps:** No steps available.")
+            except:
+                st.markdown("**👨‍🍳 Steps:** No steps available.")
 
+            # ✅ Correct indentation
             st.markdown('</div>', unsafe_allow_html=True)
+
     else:
         st.warning("❌ No recipes found. Try different ingredients.")
 else:
-    st.info("👆 Start by typing ingredients or selecting from the sidebar.")
+    st.info("👆 Start by typing ingredients.")
